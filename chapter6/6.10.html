@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test :has() Selector</title>
+    <link rel="stylesheet" href="6.10.css" />
+  </head>
+  <body>
+    <h1>Testing :has() Selector</h1>
+
+    <p>This nav should be cyan because it contains a &lt;b&gt; tag:</p>
+    <nav>
+      <div>Navigation with <b>bold text</b> inside</div>
+    </nav>
+
+    <p>This nav should NOT be cyan (no bold tag):</p>
+    <nav>
+      <div>Navigation without bold text</div>
+    </nav>
+
+    <p>This nav should be cyan (nested bold tag):</p>
+    <nav>
+      <ul>
+        <li><b>Home</b></li>
+        <li>About</li>
+      </ul>
+    </nav>
+
+    <p>Regular paragraph text for comparison (should be black)</p>
+  </body>
+</html>
