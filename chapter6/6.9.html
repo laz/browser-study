@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Testing !important</title>
+  </head>
+  <body>
+    <h1>Testing !important Priority</h1>
+
+    <!-- Test 1: Should be RED (p with !important beats #special) -->
+    <p id="special">
+      Test 1: Should be RED (p !important priority 10001 beats #special priority
+      100)
+    </p>
+
+    <!-- Test 2: Should be GREEN (ID with !important) -->
+    <p id="winner">
+      Test 2: Should be GREEN (#winner !important priority 10100 beats p
+      !important priority 10001)
+    </p>
+
+    <!-- Test 3: Should be RED (p !important beats div p) -->
+    <div>
+      <p>
+        Test 3: Should be RED (p !important priority 10001 beats div p priority
+        2)
+      </p>
+    </div>
+
+    <!-- Test 4: Should be RED (p !important beats everything) -->
+    <div>
+      <p id="special">
+        Test 4: Should be RED (p !important priority 10001 beats #special
+        priority 100 and div p priority 2)
+      </p>
+    </div>
+
+    <!-- Test 5: Should be RED (!important beats inline style) -->
+    <p style="color: cyan">
+      Test 5: Should be RED (p !important priority 10001 beats inline style
+      priority 1000)
+    </p>
+
+    <!-- Test 6: Should be GREEN (!important beats inline style) -->
+    <p id="winner" style="color: yellow">
+      Test 6: Should be GREEN (#winner !important priority 10100 beats inline
+      style priority 1000)
+    </p>
+
+    <!-- Test 7: regular link -->
+    <a href="#">Test 7: Should be ORANGE (a selector from test-simple.css)</a>
+  </body>
+</html>

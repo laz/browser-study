@@ -1,0 +1,19 @@
+p {
+  color: red !important;
+}
+
+#special {
+  color: blue;
+}
+
+#winner {
+  color: green !important;
+}
+
+div p {
+  color: purple;
+}
+
+a {
+  color: orange;
+}
