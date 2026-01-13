@@ -419,12 +419,6 @@ class Chrome:
         cmds.append(DrawText(self.back_rect.left + self.padding, self.back_rect.top, "<", self.font, "black"))
 
         cmds.append(DrawOutline(self.address_rect, "black", 1))
-        # url = str(self.browser.active_tab.url)
-        # cmds.append(DrawText(
-        #     self.address_rect.left + self.padding,
-        #     self.address_rect.top,
-        #     url, self.font, "black"
-        # ))
 
         if self.focus == "address bar":
             cmds.append(DrawText(
@@ -515,8 +509,6 @@ class BlockLayout:
         self.previous = previous
         self.children = []
 
-        # self.display_list = []
-
         self.x = None
         self.y = None
         self.width = None
@@ -558,26 +550,11 @@ class BlockLayout:
                 previous = next
             
         else:
-            # self.cursor_x = 0
-            # self.cursor_y = 0
-            # self.weight = "normal"
-            # self.style = "roman"
-            # self.size = 12
-            # self.line = []
-
-            # self.recurse(self.node)
-            # self.flush()
-
             self.new_line()
             self.recurse(self.node)
 
         for child in self.children:
             child.layout()
-
-        # if mode == "block":
-        #     self.height = sum([child.height for child in self.children])
-        # else:
-        #     self.height = self.cursor_y
 
         self.height = sum([child.height for child in self.children])
 
@@ -593,29 +570,7 @@ class BlockLayout:
             rect = DrawRect(self.self_rect(), bgcolor)
             cmds.append(rect)
 
-        # if self.layout_mode() == "inline":
-        #     for x, y, word, font, color in self.display_list:
-        #         cmds.append(DrawText(x, y, word, font, color))
-
         return cmds
-
-    # def flush(self):
-    #     if not self.line: return
-    #     metrics = [font.metrics() for x, word, font, color in self.line]
-    #     max_ascent = max([metric["ascent"] for metric in metrics])
-
-    #     baseline = self.cursor_y + 1.25 * max_ascent
-
-    #     for rel_x, word, font, color in self.line:
-    #         x = self.x + rel_x
-    #         y = self.y + baseline - font.metrics("ascent")
-    #         self.display_list.append((x, y, word, font, color))
-
-    #     max_descent = max([metric["descent"] for metric in metrics])
-    #     self.cursor_y = baseline + 1.25 * max_descent
-
-    #     self.cursor_x = 0
-    #     self.line = []
 
     def word(self, node, word):
         weight = node.style["font-weight"]
@@ -627,10 +582,6 @@ class BlockLayout:
         color = node.style["color"]
 
         w = font.measure(word)
-
-        # if self.cursor_x + w > self.width:
-        #     self.flush()
-        # self.line.append((self.cursor_x, word, font, color))
         
         self.cursor_x += w + font.measure(" ")
 
@@ -659,7 +610,6 @@ class BlockLayout:
         elif tag == "big":
             self.size += 4
         elif tag == "br":
-            # self.flush()
             self.new_line()
 
     def close_tag(self, tag):
@@ -672,7 +622,6 @@ class BlockLayout:
         elif tag == "big":
             self.size -= 4
         elif tag == "p":
-            # self.flush()
             self.new_line()
             self.cursor_y += VSTEP
 
@@ -682,7 +631,6 @@ class BlockLayout:
                 self.word(node, word)
         else:
             if node.tag == "br":
-                # self.flush()
                 self.new_line()
             
             for child in node.children:
@@ -746,8 +694,6 @@ class TextLayout:
         if self.previous:
             space = self.previous.font.measure(" ")
             self.x = self.previous.x + space + self.previous.width
-
-            # linebreak ? handled in def word in BlockLayout
         else:
             self.x = self.parent.x
 
