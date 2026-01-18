@@ -2,7 +2,7 @@ import socket
 import ssl
 import tkinter
 import tkinter.font
-import urllib
+import urllib.parse
 
 WIDTH, HEIGHT = 800, 600
 HSTEP, VSTEP = 13, 18
@@ -354,7 +354,6 @@ class Tab:
             value = urllib.parse.quote(value)
             body += "&" + name + "=" + value
         body = body[1:]
-
         url = self.url.resolve(elt.attributes["action"])
         self.load(url, body)
 
@@ -1051,13 +1050,16 @@ class URL:
 
         request = "{} {} HTTP/1.0\r\n".format(method, self.path)
         request += "Host: {}\r\n".format(self.host)
-        request += "\r\n"
 
         if payload:
             length = len(payload.encode("utf8"))
             request += "Content-Length: {}\r\n".format(length)
 
-        if payload: request += payload
+        request += "\r\n"
+
+        if payload: 
+            request += payload
+
         s.send(request.encode("utf8"))
 
         response = s.makefile("r", encoding="utf8", newline="\r\n")

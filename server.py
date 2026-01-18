@@ -30,7 +30,6 @@ def handle_connection(conx):
         body = req.read(length).decode('utf8')
     else:
         body = None
-    
     status, body = do_request(method, url, headers, body)
 
     response = "HTTP/1.0 {}\r\n".format(status)
