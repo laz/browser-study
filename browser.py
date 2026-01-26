@@ -3,6 +3,7 @@ import ssl
 import tkinter
 import tkinter.font
 import urllib.parse
+import dukpy
 
 WIDTH, HEIGHT = 800, 600
 HSTEP, VSTEP = 13, 18
@@ -167,6 +168,68 @@ class DescendantSelector:
             node = node.parent
         return False
 
+RUNTIME_JS = open("runtime.js").read()
+EVENT_DISPATCH_JS = "new Node(dukpy.handle).dispatchEvent(new Event(dukpy.type))"
+
+class JSContext:
+    def __init__(self, tab):
+        self.tab = tab
+        self.interp = dukpy.JSInterpreter()
+        self.interp.evaljs(RUNTIME_JS)
+        self.interp.export_function("log", print)
+        self.interp.export_function("querySelectorAll", self.querySelectorAll)
+        self.interp.export_function("getAttribute", self.getAttribute)
+        self.interp.export_function("innerHTML_set", self.innerHTML_set)
+
+        self.node_to_handle = {}
+        self.handle_to_node = {}
+
+    def run(self, script, code):
+        try:
+            return self.interp.evaljs(code)
+        except dukpy.JSRuntimeError as e:
+            print("Script", script, "crashed", e)
+
+    def querySelectorAll(self, selector_text):
+        selector = CSSParser(selector_text).selector()
+
+        nodes = [node for node in tree_to_list(self.tab.nodes, [])
+                 if selector.matches(node)]
+
+        return [self.get_handle(node) for node in nodes]
+
+    def getAttribute(self, handle, attr):
+        elt = self.handle_to_node[handle]
+        attr = elt.attributes.get(attr, None)
+        return attr if attr else ""
+
+    def get_handle(self, elt):
+        if elt not in self.node_to_handle:
+            handle = len(self.node_to_handle)
+            self.node_to_handle[elt] = handle
+            self.handle_to_node[handle] = elt
+        else:
+            handle = self.node_to_handle[elt]
+        return handle
+    
+    def dispatch_event(self, type, elt):
+        handle = self.node_to_handle.get(elt, -1)
+        self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
+
+        do_default = self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
+        return not do_default
+    
+    def innerHTML_set(self, handle, s):
+        doc = HTMLParser("<html><body>" + s + "</body></html").parse()
+        new_nodes = doc.children[0].children
+
+        elt = self.handle_to_node[handle]
+        elt.children = new_nodes
+        for child in elt.children:
+            child.parent = elt
+
+        self.tab.render()
+
 DEFAULT_STYLE_SHEET = CSSParser(open("browser.css").read()).parse()
 
 class Browser:
@@ -271,13 +334,30 @@ class Tab:
         body = url.request(payload)
         self.nodes = HTMLParser(body).parse()
 
+        scripts = [node.attributes["src"] for node
+                   in tree_to_list(self.nodes, [])
+                   if isinstance(node, Element)
+                   and node.tag == "script"
+                   and "src" in node.attributes]
+
+        self.js = JSContext(self)
+        for script in scripts:
+            script_url = url.resolve(script)
+            try:
+                body = script_url.request()
+            except:
+                continue
+            self.js.run(script, body)
+
+        
+
         links = [node.attributes["href"]
                 for node in tree_to_list(self.nodes, [])
                 if isinstance(node, Element)
                 and node.tag == "link"
                 and node.attributes.get("rel") == "stylesheet"
                 and "href" in node.attributes]
-        
+
         for link in links:
             style_url = url.resolve(link)
             try:
@@ -319,14 +399,17 @@ class Tab:
             if isinstance(elt, Text):
                 pass
             elif elt.tag == "a" and "href" in elt.attributes:
+                if self.js.dispatch_event("click", elt): return
                 url = self.url.resolve(elt.attributes["href"])
                 return self.load(url)
             elif elt.tag == "input":
+                if self.js.dispatch_event("click", elt): return
                 elt.attributes["value"] = ""
                 self.focus = elt
                 elt.is_focused = True
                 return self.render()
             elif elt.tag == "button":
+                if self.js.dispatch_event("click", elt): return
                 while elt:
                     if elt.tag == "form" and "action" in elt.attributes:
                         return self.submit_form(elt)
@@ -336,10 +419,13 @@ class Tab:
 
     def keypress(self, char):
         if self.focus:
+            if self.js.dispatch_event("keydown", self.focus): return
             self.focus.attributes["value"] += char
             self.render()
 
     def submit_form(self, elt):
+        if self.js.dispatch_event("submit", self.focus): return
+
         inputs = [node for node in tree_to_list(elt, [])
                   if isinstance(node, Element)
                   and node.tag == "input"
@@ -1008,7 +1094,7 @@ class Element:
 class URL:
     def __init__(self, url):
         self.scheme, url = url.split("://", 1)
-        assert self.scheme in ["http", "https"]
+        assert self.scheme in ["http", "https", "file"]
 
         if "/" not in url:
             url = url + "/"
@@ -1020,12 +1106,17 @@ class URL:
             self.port = 80
         elif self.scheme == "https":
             self.port = 443
+        elif self.scheme == "file":
+            self.port = 21
 
-        if ":" in self.host:
+        if self.scheme in ["http", "https"] and ":" in self.host:
             self.host, port = self.host.split(":", 1)
             self.port = int(port)
 
     def __str__(self):
+        if self.scheme == "file":
+            return self.scheme + "://" + self.host + self.path
+
         port_part = ":" + str(self.port)
         if self.scheme == "https" and self.port == 443:
             port_part = ""
@@ -1034,6 +1125,10 @@ class URL:
         return self.scheme + "://" + self.host + port_part + self.path
 
     def request(self, payload=None):
+        if self.scheme == "file":
+            with open(self.path, "r", encoding="utf-8") as file:
+                return file.read()
+
         s = socket.socket(
             family=socket.AF_INET,
             type=socket.SOCK_STREAM,
@@ -1096,6 +1191,8 @@ class URL:
             url = dir + "/" + url
         if url.startswith("//"):
             return URL(self.scheme + ":" + url)
+        elif self.scheme == "file":
+            return URL(self.scheme + "://" + self.host + url)
         else:
             return URL(self.scheme + "://" + self.host + ":" + str(self.port) + url)
     
