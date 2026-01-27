@@ -214,8 +214,6 @@ class JSContext:
     
     def dispatch_event(self, type, elt):
         handle = self.node_to_handle.get(elt, -1)
-        self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
-
         do_default = self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
         return not do_default
     

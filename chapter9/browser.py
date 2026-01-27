@@ -214,8 +214,6 @@ class JSContext:
     
     def dispatch_event(self, type, elt):
         handle = self.node_to_handle.get(elt, -1)
-        self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
-
         do_default = self.interp.evaljs(EVENT_DISPATCH_JS, type=type, handle=handle)
         return not do_default
     
@@ -424,7 +422,7 @@ class Tab:
             self.render()
 
     def submit_form(self, elt):
-        if self.js.dispatch_event("submit", self.focus): return
+        if self.js.dispatch_event("submit", elt): return
 
         inputs = [node for node in tree_to_list(elt, [])
                   if isinstance(node, Element)
