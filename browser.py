@@ -180,6 +180,7 @@ class JSContext:
         self.interp.export_function("querySelectorAll", self.querySelectorAll)
         self.interp.export_function("getAttribute", self.getAttribute)
         self.interp.export_function("innerHTML_set", self.innerHTML_set)
+        self.interp.export_function("XMLHttpRequest_send", self.XMLHttpRequest_send)
 
         self.node_to_handle = {}
         self.handle_to_node = {}
@@ -227,6 +228,17 @@ class JSContext:
             child.parent = elt
 
         self.tab.render()
+
+    def XMLHttpRequest_send(self, method, url, body):
+        full_url = self.tab.url.resolve(url)
+
+        if not self.tab.allowed_request(full_url):
+            raise Exception("Cross-origin XHR blocked by CSP")
+        if full_url.origin() != self.tab.url.origin():
+            raise Exception("Cross-origin XHR request not allowed")
+
+        headers, out = full_url.request(self.tab.url, body)
+        return out
 
 DEFAULT_STYLE_SHEET = CSSParser(open("browser.css").read()).parse()
 
@@ -327,10 +339,18 @@ class Tab:
         paint_tree(self.document, self.display_list)
 
     def load(self, url, payload=None):
+        headers, body = url.request(self.url, payload)
         self.history.append(url)
         self.url = url
-        body = url.request(payload)
         self.nodes = HTMLParser(body).parse()
+
+        self.allowed_origins = None
+        if "content-security-policy" in headers:
+            csp = headers["content-security-policy"].split()
+            if len(csp) > 0 and csp[0] == "default-src":
+                self.allowed_origins = []
+                for origin in csp[1:]:
+                    self.allowed_origins.append(URL(origin).origin())
 
         scripts = [node.attributes["src"] for node
                    in tree_to_list(self.nodes, [])
@@ -341,13 +361,14 @@ class Tab:
         self.js = JSContext(self)
         for script in scripts:
             script_url = url.resolve(script)
+            if not self.allowed_request(script_url):
+                print("Blocked script", script, "due to CSP")
+                continue
             try:
-                body = script_url.request()
+                header, body = script_url.request(url)
             except:
                 continue
             self.js.run(script, body)
-
-        
 
         links = [node.attributes["href"]
                 for node in tree_to_list(self.nodes, [])
@@ -358,8 +379,11 @@ class Tab:
 
         for link in links:
             style_url = url.resolve(link)
+            if not self.allowed_request(script_url):
+                print("Blocked link", link, "due to CSP")
+                continue
             try:
-                body = style_url.request()
+                header, body = style_url.request(url)
             except:
                 continue
             self.rules.extend(CSSParser(body).parse())
@@ -440,6 +464,9 @@ class Tab:
         body = body[1:]
         url = self.url.resolve(elt.attributes["action"])
         self.load(url, body)
+
+    def allowed_request(self, url):
+        return self.allowed_origins == None or url.origin() in self.allowed_origins
 
 class Chrome:
     def __init__(self, browser):
@@ -1089,6 +1116,8 @@ class Element:
     def __repr__(self):
         return "<" + self.tag + ">"
 
+COOKIE_JAR = {}
+
 class URL:
     def __init__(self, url):
         self.scheme, url = url.split("://", 1)
@@ -1122,7 +1151,7 @@ class URL:
             port_part = ""
         return self.scheme + "://" + self.host + port_part + self.path
 
-    def request(self, payload=None):
+    def request(self, referrer, payload=None):
         if self.scheme == "file":
             with open(self.path, "r", encoding="utf-8") as file:
                 return file.read()
@@ -1148,6 +1177,17 @@ class URL:
             length = len(payload.encode("utf8"))
             request += "Content-Length: {}\r\n".format(length)
 
+        if self.host in COOKIE_JAR:
+            cookie, params = COOKIE_JAR[self.host]
+            allow_cookie = True
+
+            if referrer and params.get("samesite", "none") == "lax":
+                if method != "GET":
+                    allow_cookie = self.host == referrer.host
+            
+            if allow_cookie:
+                request += "Cookie: {}\r\n".format(cookie)
+
         request += "\r\n"
 
         if payload: 
@@ -1169,13 +1209,31 @@ class URL:
             header, value = line.split(":", 1)
             response_headers[header.casefold()] = value.strip()
 
+        
+        if "set-cookie" in response_headers:
+            cookie = response_headers["set-cookie"]
+            params = {}
+
+            if ";" in cookie:
+                cookie, rest, = cookie.split(";", 1)
+                for param in rest.split(";"):
+                    if "=" in param:
+                        param, value = param.split("=", 1)
+                    else:
+                        value = "true"
+                    params[param.strip().casefold()] = value.casefold()
+            COOKIE_JAR[self.host] = (cookie, params)
+
+        print(method, self.host, COOKIE_JAR)
+        print(response_headers)
+
         assert "transfer-encoding" not in response_headers
         assert "content-encoding" not in response_headers
 
-        body = response.read()
+        content = response.read()
         s.close()
 
-        return body
+        return response_headers, content
     
     def resolve(self, url):
         if "://" in url: 
@@ -1193,6 +1251,9 @@ class URL:
             return URL(self.scheme + "://" + self.host + url)
         else:
             return URL(self.scheme + "://" + self.host + ":" + str(self.port) + url)
+
+    def origin(self):
+        return self.scheme + "://" + self.host + ":" + str(self.port)
     
 def print_tree(node, indent=0):
     print(" " * indent, node)
